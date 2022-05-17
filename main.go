@@ -1,34 +1,71 @@
 package main
 
 import (
+	"fmt"
 	"log"
-	"os"
+	"net"
 	"regexp"
-
-	"gopkg.in/yaml.v2"
 )
 
-type Entry struct {
-	Address string `yaml:"addr"`
-	Mask    string `yaml:"mask"`
+type Address struct {
+	IP   net.IP
+	Mask net.IPMask
 }
 
 func main() {
+	config, err := ReadConfig("test.yaml")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	entries := ParseEntries(config)
+
+	for _, ip := range entries {
+		fmt.Println(ip)
+	}
 }
 
-func ReadEntries(path string) []Entry {
-	buf, err := os.ReadFile(path)
-	if err != nil {
-		log.Fatal(err)
-	}
+func Simplify(adresses []Address) {
+}
 
-	var obj []Entry
-	err = yaml.Unmarshal(buf, &obj)
-	if err != nil {
-		log.Fatal(err)
-	}
+func IpToInt(ip net.IP) int {
+	return (int(ip[0]) << 24) | (int(ip[1]) << 16) | (int(ip[2]) << 8) | int(ip[3])
+}
 
-	return obj
+func IntToIp(ip int) net.IP {
+	return net.IP([]byte{
+		byte((ip >> 24) & 0xFF),
+		byte((ip >> 16) & 0xFF),
+		byte((ip >> 8) & 0xFF),
+		byte(ip & 0xFF),
+	})
+}
+
+func ParseEntries(config []Config) []Address {
+	result := []Address{}
+	for _, conf := range config {
+		if IsIP(conf.Address) {
+			x := Address{
+				IP:   net.ParseIP(conf.Address).To4(),
+				Mask: net.CIDRMask(conf.Mask, 32),
+			}
+			result = append(result, x)
+			continue
+		}
+		ips, err := Resolve(conf.Address)
+		if err != nil {
+			log.Printf("problem with resolving: %s\n", conf.Address)
+			continue
+		}
+		for _, ip := range ips {
+			x := Address{
+				IP:   ip.To4(),
+				Mask: net.CIDRMask(conf.Mask, 32),
+			}
+			result = append(result, x)
+		}
+	}
+	return result
 }
 
 func IsIP(address string) bool {
