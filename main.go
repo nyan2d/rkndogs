@@ -5,11 +5,20 @@ import (
 	"log"
 	"net"
 	"regexp"
+	"strconv"
 )
 
 type Address struct {
 	IP   net.IP
-	Mask net.IPMask
+	Mask int
+}
+
+func (a *Address) Contains(addr Address) bool {
+	_, netw, err := net.ParseCIDR(a.IP.String() + "/" + strconv.Itoa(a.Mask))
+	if err != nil {
+		return false
+	}
+	return netw.Contains(addr.IP)
 }
 
 func main() {
@@ -20,25 +29,42 @@ func main() {
 
 	entries := ParseEntries(config)
 
+	Simplify(entries)
+
 	for _, ip := range entries {
 		fmt.Println(ip)
 	}
 }
 
-func Simplify(adresses []Address) {
-}
+func Simplify(addresses []Address) {
+	if len(addresses) < 2 {
+		return
+	}
 
-func IpToInt(ip net.IP) int {
-	return (int(ip[0]) << 24) | (int(ip[1]) << 16) | (int(ip[2]) << 8) | int(ip[3])
-}
-
-func IntToIp(ip int) net.IP {
-	return net.IP([]byte{
-		byte((ip >> 24) & 0xFF),
-		byte((ip >> 16) & 0xFF),
-		byte((ip >> 8) & 0xFF),
-		byte(ip & 0xFF),
-	})
+	// sort.Slice(addresses, func(i, j int) bool {
+	// 	return bytes.Compare(addresses[i].IP, addresses[j].IP) > 0
+	// })
+	done := false
+	for !done {
+		done = true
+		for i := 0; i < len(addresses); i++ {
+			isbreak := false
+			for j := 0; j < len(addresses); i++ {
+				if i == j {
+					continue
+				}
+				if addresses[i].Contains(addresses[j]) {
+					done = false
+					addresses = remove(addresses, j)
+					isbreak = true
+					break
+				}
+			}
+			if isbreak {
+				break
+			}
+		}
+	}
 }
 
 func ParseEntries(config []Config) []Address {
@@ -47,7 +73,7 @@ func ParseEntries(config []Config) []Address {
 		if IsIP(conf.Address) {
 			x := Address{
 				IP:   net.ParseIP(conf.Address).To4(),
-				Mask: net.CIDRMask(conf.Mask, 32),
+				Mask: conf.Mask,
 			}
 			result = append(result, x)
 			continue
@@ -60,7 +86,7 @@ func ParseEntries(config []Config) []Address {
 		for _, ip := range ips {
 			x := Address{
 				IP:   ip.To4(),
-				Mask: net.CIDRMask(conf.Mask, 32),
+				Mask: conf.Mask,
 			}
 			result = append(result, x)
 		}
@@ -71,4 +97,8 @@ func ParseEntries(config []Config) []Address {
 func IsIP(address string) bool {
 	rg := regexp.MustCompile(`^((25[0-5]|(2[0-4]|1\d|[1-9]|)\d)\.){3}(25[0-5]|(2[0-4]|1\d|[1-9]|)\d)$`)
 	return rg.MatchString(address)
+}
+
+func remove[T any](index []T, s int) []T {
+	return append(index[:s], index[s+1:]...)
 }
