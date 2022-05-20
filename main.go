@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"net"
 	"regexp"
@@ -22,40 +21,55 @@ func (a *Address) Contains(addr Address) bool {
 }
 
 func main() {
-	config, err := ReadConfig("test.yaml")
+	config, err := ReadConfig("config.yaml")
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	entries := ParseEntries(config)
+	entries := ParseEntries(config.Routes)
+	entries = Reduce(entries)
 
-	Simplify(entries)
-
-	for _, ip := range entries {
-		fmt.Println(ip)
+	routes := LoadRoutes(config.Device)
+	filteredRoutes := make([]TomatoRoute, 0)
+	for _, v := range routes {
+		if v.Gate == config.Gate {
+			filteredRoutes = append(filteredRoutes, v)
+		}
 	}
+	ClearRoutes(config.Device, filteredRoutes)
+
+	newRoutes := []TomatoRoute{}
+	for _, v := range entries {
+		mask := net.CIDRMask(v.Mask, 32)
+		newRoutes = append(newRoutes, TomatoRoute{
+			Host: v.IP.Mask(mask).String(),
+			Mask: net.IP(mask).String(),
+			Gate: config.Gate,
+		})
+	}
+	PushRoutes(config.Device, newRoutes)
 }
 
-func Simplify(addresses []Address) {
-	if len(addresses) < 2 {
-		return
+// TODO: there is quadratic complexity rn, and it would be great to reduce it
+func Reduce(adr []Address) []Address {
+	if len(adr) < 2 {
+		return adr
 	}
+	result := make([]Address, len(adr))
+	copy(result, adr)
 
-	// sort.Slice(addresses, func(i, j int) bool {
-	// 	return bytes.Compare(addresses[i].IP, addresses[j].IP) > 0
-	// })
 	done := false
 	for !done {
 		done = true
-		for i := 0; i < len(addresses); i++ {
+		for i := 0; i < len(result); i++ {
 			isbreak := false
-			for j := 0; j < len(addresses); i++ {
+			for j := len(result) - 1; j >= 0; j-- {
 				if i == j {
 					continue
 				}
-				if addresses[i].Contains(addresses[j]) {
+				if result[i].Contains(result[j]) {
 					done = false
-					addresses = remove(addresses, j)
+					result = delete(result, j)
 					isbreak = true
 					break
 				}
@@ -65,9 +79,11 @@ func Simplify(addresses []Address) {
 			}
 		}
 	}
+
+	return result
 }
 
-func ParseEntries(config []Config) []Address {
+func ParseEntries(config []RouteConfig) []Address {
 	result := []Address{}
 	for _, conf := range config {
 		if IsIP(conf.Address) {
@@ -99,6 +115,6 @@ func IsIP(address string) bool {
 	return rg.MatchString(address)
 }
 
-func remove[T any](index []T, s int) []T {
-	return append(index[:s], index[s+1:]...)
+func delete[S ~[]T, T any](s S, i int) S {
+	return append(s[:i], s[i+1:]...)
 }
