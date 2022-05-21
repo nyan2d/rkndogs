@@ -1,4 +1,4 @@
-package main
+package dns
 
 import (
 	"encoding/json"
@@ -9,15 +9,15 @@ import (
 )
 
 const (
-	GoogleDnsUri = "https://dns.google/resolve?name=%v&type=A"
+	googleDnsUri = "https://dns.google/resolve?name=%v&type=A"
 )
 
-type GoogleDnsResponse struct {
-	Status int64             `json:"Status"`
-	Answer []GoogleDnsAnswer `json:"Answer"`
+type dnsResponse struct {
+	Status int64       `json:"Status"`
+	Answer []dnsAnswer `json:"Answer"`
 }
 
-type GoogleDnsAnswer struct {
+type dnsAnswer struct {
 	Type int64  `json:"type"`
 	Data string `json:"data"`
 }
@@ -25,7 +25,7 @@ type GoogleDnsAnswer struct {
 func Resolve(domain string) ([]net.IP, error) {
 	ips := []net.IP{}
 
-	resp, err := http.Get(fmt.Sprintf(GoogleDnsUri, domain))
+	resp, err := http.Get(fmt.Sprintf(googleDnsUri, domain))
 	if err != nil {
 		return ips, err
 	}
@@ -36,7 +36,7 @@ func Resolve(domain string) ([]net.IP, error) {
 		return ips, err
 	}
 
-	var response GoogleDnsResponse
+	var response dnsResponse
 	err = json.Unmarshal(buf, &response)
 	if err != nil {
 		return ips, err
@@ -48,7 +48,7 @@ func Resolve(domain string) ([]net.IP, error) {
 
 	for _, answer := range response.Answer {
 		if answer.Type == 1 {
-			ips = append(ips, net.ParseIP(answer.Data))
+			ips = append(ips, net.ParseIP(answer.Data).To4())
 		}
 	}
 

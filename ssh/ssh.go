@@ -1,9 +1,8 @@
-package main
+package ssh
 
 import (
 	"bytes"
 	"fmt"
-	"log"
 	"net"
 	"regexp"
 	"strings"
@@ -15,14 +14,20 @@ const (
 	routePattern = `(?m)^(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\s+(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\s+(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})`
 )
 
-type TomatoRoute struct {
+type DeviceConfig struct {
+	Host     string `yaml:"host"`
+	Username string `yaml:"username"`
+	Password string `yaml:"password"`
+}
+
+type SshRoute struct {
 	Host string
 	Mask string
 	Gate string
 }
 
-func LoadRoutes(d DeviceConfig) []TomatoRoute {
-	result := make([]TomatoRoute, 0)
+func LoadRoutes(d DeviceConfig) []SshRoute {
+	result := make([]SshRoute, 0)
 	resp, err := ExecuteSshCommand(d, "route -n")
 	if err != nil {
 		return result
@@ -35,7 +40,7 @@ func LoadRoutes(d DeviceConfig) []TomatoRoute {
 			continue
 		}
 		submatches := rg.FindStringSubmatch(line)
-		result = append(result, TomatoRoute{
+		result = append(result, SshRoute{
 			Host: submatches[1],
 			Mask: submatches[3],
 			Gate: submatches[2],
@@ -44,7 +49,7 @@ func LoadRoutes(d DeviceConfig) []TomatoRoute {
 	return result
 }
 
-func ClearRoutes(d DeviceConfig, routes []TomatoRoute) {
+func RemoveRoutes(d DeviceConfig, routes []SshRoute) error {
 	commands := []string{}
 	for _, route := range routes {
 		command := fmt.Sprintf("route del -net %v netmask %v gw %v", route.Host, route.Mask, route.Gate)
@@ -52,13 +57,12 @@ func ClearRoutes(d DeviceConfig, routes []TomatoRoute) {
 	}
 
 	if _, err := ExecuteSshCommands(d, commands); err != nil {
-		log.Println(err)
-	} else {
-		log.Println("routing table cleared")
+		return err
 	}
+	return nil
 }
 
-func PushRoutes(d DeviceConfig, routes []TomatoRoute) {
+func PushRoutes(d DeviceConfig, routes []SshRoute) error {
 	commands := []string{}
 	for _, v := range routes {
 		command := fmt.Sprintf("route add -net %v netmask %v gw %v", v.Host, v.Mask, v.Gate)
@@ -66,10 +70,9 @@ func PushRoutes(d DeviceConfig, routes []TomatoRoute) {
 	}
 
 	if _, err := ExecuteSshCommands(d, commands); err != nil {
-		log.Println(err)
-	} else {
-		log.Println("routing table successfully updated")
+		return err
 	}
+	return nil
 }
 
 func ExecuteSshCommand(c DeviceConfig, command string) (string, error) {
