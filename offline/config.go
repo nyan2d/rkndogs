@@ -64,7 +64,7 @@ func (rc RouteConfig) isIP() bool {
 }
 
 func (rc RouteConfig) IP() net.IP {
-	return net.ParseIP(rc.Address)
+	return net.ParseIP(rc.Address).Mask(rc.IPMask()).To4()
 }
 
 func (rc RouteConfig) IPMask() net.IPMask {
